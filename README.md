@@ -2,7 +2,7 @@
 
 科研全流程 Skill。**四张逻辑图 + 五道闸门 + 三段回流 + 一个证据库。**
 
-面向需要把研究做扎实、而不是只把论文写出来的人。适用于 WorkBuddy / Claude Code / Codex 等支持 `SKILL.md` 的 agent 环境。
+面向需要把研究做扎实、而不是只把论文写出来的人。适配 WorkBuddy / Claude Code / Codex / DeepSeek Harness / Trae 及任何符合 [Agent Skills 规范](https://agentskills.io/specification) 的宿主。
 
 ---
 
@@ -60,31 +60,93 @@ Trellis 的应对是把整条流程做成**可回退的状态机**：每一步�
 
 ## 安装
 
-Skill 目录名必须为 `trellis`。
+核心只有一个 `name` + `description` + Markdown 正文，无脚本、无外部依赖。任何遵循 Agent Skills 规范的宿主都能直接读。
 
-### 方式一：克隆后复制（推荐）
+目录结构统一为 `<skills目录>/trellis/SKILL.md`，**目录名必须是 `trellis`**。
+
+### 各宿主放哪里
+
+| 宿主 | 项目级 | 用户级 |
+|---|---|---|
+| **WorkBuddy** | `<项目>/.workbuddy-ai/skills/` | `~/.workbuddy-ai/skills/` |
+| **Claude Code** | `<项目>/.claude/skills/` | `~/.claude/skills/` |
+| **Codex** | `<仓库>/.agents/skills/`（从当前目录向上扫到仓库根） | `~/.agents/skills/` |
+| **DeepSeek Harness** | `.dsh/skills/`、`.agents/skills/`（前者优先级更高） | `~/.dsh/skills/`、`~/.agents/skills/` |
+| **Trae** | `<项目>/.trae/skills/` | 设置里的「全局技能」目录 |
+| 其他（符合 Agent Skills 规范） | 查该宿主文档的 skills 目录 | 同上 |
+
+### 方式一：一份源码，多宿主链接（推荐）
+
+Codex 和 DeepSeek Harness 原生读 `.agents/skills`。把它当源目录，其他宿主用符号链接接进去——改一处，全部生效。
 
 ```bash
-git clone https://github.com/Meruem27/trellis-skill.git
-mkdir -p ~/.workbuddy-ai/skills
-cp -r trellis-skill/trellis ~/.workbuddy-ai/skills/
+git clone https://github.com/Meruem27/trellis-skill.git /tmp/trellis-skill
+mkdir -p .agents/skills
+cp -r /tmp/trellis-skill/trellis .agents/skills/
+
+# Claude Code
+mkdir -p .claude/skills       && ln -s ../../.agents/skills/trellis .claude/skills/trellis
+# WorkBuddy
+mkdir -p .workbuddy-ai/skills && ln -s ../../.agents/skills/trellis .workbuddy-ai/skills/trellis
+# Trae
+mkdir -p .trae/skills         && ln -s ../../.agents/skills/trellis .trae/skills/trellis
 ```
 
-Claude Code / Codex 用户把目标目录换成 `~/.claude/skills/` 或 `~/.codex/skills/` 即可。
+Windows 用 `mklink /D`，或直接复制目录。
 
-### 方式二：只装到单个项目
+两个坑：
+
+- Git 提交时要保留符号链接。`core.symlinks=false` 会把链接写成普通文本，宿主扫不到。
+- 用复制方案的话，在 CI 里校验两份文件的哈希，避免同一个 Skill 被改出两个版本。
+
+### 方式二：装到用户级（所有项目可用）
 
 ```bash
-git clone https://github.com/Meruem27/trellis-skill.git
-mkdir -p <你的项目>/.workbuddy-ai/skills
-cp -r trellis-skill/trellis <你的项目>/.workbuddy-ai/skills/
+git clone https://github.com/Meruem27/trellis-skill.git /tmp/trellis-skill
+mkdir -p ~/.workbuddy-ai/skills ~/.claude/skills ~/.agents/skills
+cp -r /tmp/trellis-skill/trellis ~/.workbuddy-ai/skills/
+cp -r /tmp/trellis-skill/trellis ~/.claude/skills/
+cp -r /tmp/trellis-skill/trellis ~/.agents/skills/
 ```
 
-项目级安装只在当前工作区生效，适合团队共享同一套规范。
+Codex 与 DeepSeek Harness 读 `~/.agents/skills`，一次覆盖三个宿主。Trae 在设置里用「全局技能」导入。
 
-### 方式三：手动
+### 方式三：只装一个宿主
 
-下载 `trellis/SKILL.md`，放进 `<skills目录>/trellis/SKILL.md`。单文件，无依赖。
+```bash
+# WorkBuddy
+mkdir -p ~/.workbuddy-ai/skills && cp -r trellis-skill/trellis ~/.workbuddy-ai/skills/
+
+# Claude Code
+mkdir -p ~/.claude/skills && cp -r trellis-skill/trellis ~/.claude/skills/
+
+# Codex / DeepSeek Harness
+mkdir -p ~/.agents/skills && cp -r trellis-skill/trellis ~/.agents/skills/
+
+# Trae（项目内）
+mkdir -p .trae/skills && cp -r trellis-skill/trellis .trae/skills/
+```
+
+装完在宿主里发一句「帮我看看这个研究方向值不值得做」，能触发就说明加载成功。
+
+### 方式四：不支持 SKILL.md 的宿主
+
+Cursor / Windsurf / Cline / Kiro 这类用规则文件的宿主，把 `SKILL.md` 正文整段复制成规则文件（frontmatter 转成对应格式）：
+
+| 宿主 | 常见规则路径 |
+|---|---|
+| Cursor | `.cursor/rules/trellis.mdc` |
+| Windsurf | `.windsurf/rules/` |
+| Cline | `.clinerules/` |
+| Kiro | `.kiro/steering/` |
+
+路径以各宿主当前文档为准。注意规则文件是**常驻上下文**，会一直占 token；`trellis` 正文 800 行，全量塞进规则里代价不小。这类宿主建议只用 `quick` 模式（单点问答），完整的三阶段流程还是放在支持按需加载的宿主里跑。
+
+### 兼容性说明
+
+- frontmatter 里的 `agent_created: true` 是 WorkBuddy 专用字段，其他宿主会忽略，不影响加载。
+- 所有宿主都是**渐进式披露**：先读 `description` 判断要不要调用，命中后才读正文。所以 description 写得准比正文写得长更重要。
+- Skill 只是知识与流程，不附带任何执行权限。脚本、沙箱、审批仍由各宿主自己管。
 
 ---
 
@@ -102,6 +164,8 @@ cp -r trellis-skill/trellis <你的项目>/.workbuddy-ai/skills/
 | "审稿意见回来了" | 意见分类 + 动作映射码 + 逐条回复 |
 
 六种工作模式：`quick`（单点问答）、`standard`（默认，单阶段）、`full`（全流程）、`resume`（断点续跑）、`reflow`（按回流矩阵定位）、`audit`（只审不写）。
+
+触发方式随宿主而变：Claude Code 用 `/trellis`，Codex 用 `$trellis` 或选择器，WorkBuddy / Trae 直接说人话即可，不需要记命令。
 
 ---
 
